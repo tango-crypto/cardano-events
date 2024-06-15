@@ -31,7 +31,7 @@ async function bootstrap() {
       return;
     }
     try {
-      // await publisher.send('epoch', epoch, source, network);
+      appService.sendMessage('new_epoch', JSON.stringify(epoch));
     } catch (err) {
       console.error(`[${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, ' UTC')}]: Epoch notification error (${source})\n`, err);
     }
@@ -43,7 +43,6 @@ async function bootstrap() {
       return;
     }
     try {
-      console.log('Sending new block ...');
       appService.sendMessage('new_block', JSON.stringify(block));
     } catch (err) {
       console.error(`[${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, ' UTC')}]: Block notification error (${source})\n`, err);
@@ -56,7 +55,7 @@ async function bootstrap() {
       return;
     }
     try {
-      // await publisher.send('delegation', delegation, source, network);
+      appService.sendMessage('new_delegation', JSON.stringify(delegation));
     } catch (err) {
       console.error(`[${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, ' UTC')}]: Delegation notification error (${source})\n`, err);
     }
@@ -68,8 +67,7 @@ async function bootstrap() {
       return;
     }
     try {
-      // console.log('payment', JSON.stringify(payment, null, 2));
-
+      appService.sendMessage('new_payment', JSON.stringify(payment));
     } catch (err) {
       console.error(`[${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, ' UTC')}]: Payments notification error (${source})\n`, err);
     }
@@ -81,7 +79,7 @@ async function bootstrap() {
       return;
     }
     try {
-      console.log('New Transaction:', JSON.stringify(tx, null, 2));
+      appService.sendMessage('new_transaction', JSON.stringify(tx));
     } catch (err) {
       console.error(`[${new Date().toISOString().replace(/T/, ' ').replace(/\..+/, ' UTC')}]: Transaction notification error (${source})\n`, err);
     }

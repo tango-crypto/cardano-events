@@ -93,8 +93,8 @@ export class OgmiosManager {
         try {
             if (this.events.has('block')) {
                 event = 'block';
-                const { block: bBlock, txs } = await this.buildBlock(block);
-                this.subscriptions.get('block').callback(null, bBlock, OGMIOS_SOURCE);
+                const { block: _block, txs } = await this.buildBlock(block);
+                this.subscriptions.get('block').callback(null, _block, OGMIOS_SOURCE);
                 if (this.events.has('transaction')) {
                     event = 'transaction';
                     // console.log('---------------------- Mapping result ----------------------');
@@ -104,7 +104,7 @@ export class OgmiosManager {
 
                     // console.log(`Querying the node...`);
                     // console.log(JSON.stringify(await this.getEraSummaries()));
-                    this.notifyTransactions(txs, bBlock);
+                    this.notifyTransactions(txs, _block);
                 }
             } else if (this.events.has('transaction')) {
                 event = 'transaction';
