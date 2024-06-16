@@ -5,11 +5,13 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationManager } from './notification-manager';
 import { Transaction, Delegation, Block, Epoch } from '@tangocrypto/tango-ledger';
 import { Payment } from './models/payment';
+import { RecoveryService } from './scylla/recovery.service';
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
   const configService = app.get(ConfigService);
   const appService = app.get(AppService);
+  const recoveryService = app.get(RecoveryService);
 
   const notificationConfig: any = {};
 
@@ -23,7 +25,7 @@ async function bootstrap() {
     }
   }
 
-  let notifications = new NotificationManager(notificationConfig);
+  let notifications = new NotificationManager(notificationConfig, recoveryService);
 
   notifications.subscribe('epoch', async (err, epoch: Epoch, source: string = 'tango.jsonrpc-server') => {
     if (err) {
@@ -89,7 +91,10 @@ async function bootstrap() {
   //   slot: 62343319,
   //   id: '502830cd35735d119875be39a05a6dea788629e4644caec56b720a8cb0739fa7'
   // }]
-  await notifications.start();
-  console.log('Starting notifications...');
+
+  const recoveryPoints = await recoveryService.findAll(notificationConfig.ogmios.network);
+  const points = recoveryPoints.length > 0 ? recoveryPoints.map(p => ({ slot: p.slot_no, id: p.hash })) : undefined;
+  console.log('Starting notifications from:', points || 'chain tip');
+  await notifications.start(points);
 }
 bootstrap();

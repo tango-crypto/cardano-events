@@ -53,8 +53,7 @@ export function slotToEpoch(slot: number, network = 'mainnet'): number {
   const shelleySlotPerEpoch = network == 'testnet' ? SHELLEY_ERA_SLOT_PER_EPOCH_TESTNET : SHELLEY_ERA_SLOT_PER_EPOCH;
   const byronSlotPerEpoch = network == 'testnet' ? BYRON_ERA_SLOT_PER_EPOCH_TESTNET : BYRON_ERA_SLOT_PER_EPOCH;
   const shelleySlots = Math.max(slot - shelleyStartSlot, 0);
-  const byronSlots = slot - shelleySlots;
-  // let a = 208 + (84906565 - (208 * 21600)) / 432000
+  const byronSlots = shelleyStartSlot;
   return Math.floor(byronSlots / byronSlotPerEpoch) + Math.floor(shelleySlots / shelleySlotPerEpoch);
 }
 

@@ -3,6 +3,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ClientOptions, ClientProviderOptions, ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScyllaService } from './scylla/scylla.service';
+import { RecoveryService } from './scylla/recovery.service';
 
 @Module({
   imports: [
@@ -28,6 +30,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     ]),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, ScyllaService, RecoveryService],
 })
 export class AppModule {}

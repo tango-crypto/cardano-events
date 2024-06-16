@@ -33,6 +33,7 @@
     "@tangocrypto/tango-ledger": "^1.8.4",
     "bech32": "^2.0.0",
     "blake2b": "^2.1.4",
+    "cassandra-driver": "^4.7.2",
     "kafkajs": "^2.2.4",
     "reflect-metadata": "^0.1.13",
     "rimraf": "^3.0.2",

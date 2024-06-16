@@ -11,4 +11,6 @@ export class BlockInfo {
     protocolVersion?: any;
     opCert?: any;
     vrfKey?: string;
+    timestamp?: Date;
+    network?: string;
 }

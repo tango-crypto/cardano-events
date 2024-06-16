@@ -1,0 +1,30 @@
+DROP KEYSPACE IF EXISTS cardanodb;
+
+CREATE KEYSPACE cardanodb WITH replication = {'class': 'SimpleStrategy', 'replication_factor' : 3};
+
+USE cardanodb;
+
+DROP TABLE IF EXISTS recoverypoints;
+CREATE TABLE recoverypoints (
+    network TEXT,
+    hash TEXT,
+    epoch_no INT,
+    slot_no INT,
+    epoch_slot_no INT,
+    block_no INT,
+    previous_block INT,
+    next_block INT,
+    slot_leader TEXT,
+    out_sum BIGINT,
+    fees BIGINT,
+    confirmations INT,
+    size INT,
+    time TIMESTAMP,
+    tx_count INT,
+    proto_major INT,
+    proto_minor INT,
+    op_cert TEXT,
+    vrf_key TEXT,
+    pool_id TEXT,
+    PRIMARY KEY (network, slot_no)
+);

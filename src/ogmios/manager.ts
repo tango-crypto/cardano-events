@@ -11,6 +11,7 @@ import { assetFingerprint, buildPlutusDataMap, convertAssetName, getAddress, get
 import { OgmiosChainSyncClient } from './chain-sync';
 import { OgmiosStateQueryClient } from './state-query';
 import { BlockInfo } from 'src/models/block-info';
+import { RecoveryService } from 'src/scylla/recovery.service';
 
 
 const OGMIOS_SOURCE = 'tango.ogmios';
@@ -25,11 +26,14 @@ export class OgmiosManager {
     onrollForward: any;
     onrollBackward: any;
 
+    recoveryService: RecoveryService;
     dbClient: PostgresClient;
     subscriptions: Map<string, { callback: (error: any, data: any, source?: string) => void }>;
     events: Map<string, boolean>;
 
-    constructor(config: { host?: string, port?: number, tls?: boolean, node_env?: string, redis_host?: string, redis_port?: number, redis_pwd?: string, redis_cluster?: string, network?: string }, dbClient: PostgresClient) {
+    currentEpoch: number = 0;
+
+    constructor(config: { host?: string, port?: number, tls?: boolean, node_env?: string, redis_host?: string, redis_port?: number, redis_pwd?: string, redis_cluster?: string, network?: string }, recoveryService: RecoveryService, dbClient: PostgresClient) {
         this.connectionConfig = { host: config.host, port: config.port, tls: config.tls };
         console.log('Connection:', this.connectionConfig);
         console.log('Network:', config.network);
@@ -42,34 +46,43 @@ export class OgmiosManager {
         this.onrollBackward = this.rollBackward.bind(this);
 
         this.dbClient = dbClient;
+        this.recoveryService = recoveryService;
     }
 
     async startChainSync(events: Map<string, boolean>, subscriptions: Map<string, { callback: (error: any, data: any, source?: string) => void }>, points?: PointOrOrigin[], inFlight?: number): Promise<void> {
         this.events = events;
         this.subscriptions = subscriptions;
+        let slot = await this.getSlot(points);
+        if (slot != 0) {
+            this.currentEpoch = slotToEpoch(slot);
+        }
         await this.chainSyncClient.createClient({ rollForward: this.onrollForward, rollBackward: this.onrollBackward });
 
-        // if (!points) {
-        //     const latestPoint = await this.getChainTip();
-        //     console.log('Get chain tip', latestPoint);
-        //     points = [latestPoint];
-        // }
         this.intersection = await this.chainSyncClient.start(points, inFlight);
         console.log('Chain sync starting at:', this.intersection);
 
     }
 
+    private async getSlot(points?: PointOrOrigin[]) {
+        let slot = points ? points[0] == 'origin' ? 0 : points[0]?.slot : undefined;
+        if (slot == undefined) {
+            const tip = await this.getChainTip();
+            slot = tip == 'origin' ? 0 : tip.slot;
+        }
+        return slot;
+    }
+
     public async getChainTip(point?: PointOrOrigin): Promise<PointOrOrigin> {
-        await this.adjustStateQueryClient(point);
+        await this.acquireStateQueryClient(point);
         return this.stateQueryClient.getChainTip();
     }
 
     public async getEraSummaries(point?: PointOrOrigin): Promise<EraSummary[]> {
-        await this.adjustStateQueryClient(point);
+        await this.acquireStateQueryClient(point);
         return this.stateQueryClient.getEraSummaries();
     }
 
-    private async adjustStateQueryClient(point?: PointOrOrigin) {
+    private async acquireStateQueryClient(point?: PointOrOrigin) {
         console.log('Acquiere point:', point);
         const connected = await this.stateQueryClient.isConnected();
         if (!connected) {
@@ -91,9 +104,15 @@ export class OgmiosManager {
         // console.log(`Chain extended, block: ${JSON.stringify(block, (_, value) => typeof value == 'bigint' ? value.toString() : value )}`);
         let event = '';
         try {
+            const { block: _block, txs } = await this.buildBlock(block);
+            await this.recoveryService.insert(this.network, _block);
+            if (this.events.has('epoch') && _block.epoch_no > this.currentEpoch) {
+                const epoch = this.buildEpoch(this.currentEpoch, _block);
+                this.currentEpoch = _block.epoch_no;
+                this.subscriptions.get('epoch').callback(null, epoch, OGMIOS_SOURCE);
+            }
             if (this.events.has('block')) {
                 event = 'block';
-                const { block: _block, txs } = await this.buildBlock(block);
                 this.subscriptions.get('block').callback(null, _block, OGMIOS_SOURCE);
                 if (this.events.has('transaction')) {
                     event = 'transaction';
@@ -108,15 +127,20 @@ export class OgmiosManager {
                 }
             } else if (this.events.has('transaction')) {
                 event = 'transaction';
-                const { block: bBlock, txs } = await this.buildBlock(block);
-                this.notifyTransactions(txs, bBlock);
+                this.notifyTransactions(txs, _block);
             }
         } catch (err) {
+            console.log('Error', err);
+            
             this.subscriptions.get(event).callback(err, null, OGMIOS_SOURCE);
         }
 
         await sleep(1000);
         requestNext()
+    }
+    buildEpoch(currentEpoch: number, _block: BlockDto) {
+        // TODO: return epoch
+        return _block;
     }
 
     private notifyTransactions(txs: { transaction: TransactionDto; inputs?: UtxoDto[] | { hash: string; index: number; }[]; outputs?: UtxoDto[]; }[], bBlock: BlockDto) {
@@ -193,6 +217,7 @@ export class OgmiosManager {
         // const pool = await this.dbClient.getPool(poolId);
         // console.log('Pool', pool);
         result.block = {
+            network: this.network,
             hash: hash,
             epoch_no: blockInfo.epochNo,
             slot_no: blockInfo.slot,

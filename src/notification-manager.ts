@@ -2,6 +2,7 @@ import { PointOrOrigin } from '@cardano-ogmios/schema';
 import { PostgresClient } from '@tangocrypto/tango-ledger';
 import { OgmiosChainSyncClient } from './ogmios/chain-sync';
 import { OgmiosManager } from './ogmios/manager';
+import { RecoveryService } from './scylla/recovery.service';
 
 export class NotificationManager {
 	config: any;
@@ -10,7 +11,7 @@ export class NotificationManager {
 	subscriptions: Map<string, { callback: (error: any, data: any, source?: string) => void }>;
 	ogmiosEvents: Map<string, boolean>;
 
-	constructor(config: any) {
+	constructor(config: any, recoveryService: RecoveryService) {
 		this.config = config;
 		this.subscriptions = new Map<string, { callback: (error: any, data: any) => void }>();
 
@@ -20,7 +21,7 @@ export class NotificationManager {
 			for(const event of this.config.ogmios.events.trim().split(',')) {
 				this.ogmiosEvents.set(event, true);
 			}
-			this.ogmiosManager = new OgmiosManager(this.config.ogmios, this.dbClient);
+			this.ogmiosManager = new OgmiosManager(this.config.ogmios, recoveryService, this.dbClient);
 		}
 	}
 

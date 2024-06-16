@@ -21,5 +21,5 @@ export class BlockDto {
     op_cert?: string; // "d5b849f9757cd2ef60c883b092a7e985d27c22f89aac7648b13d3cfd4cce4737",
     vrf_key?: string; // "vrf_vk1m5tnjq3exhpu8mfcy6rl5xe5jedd8adzx6n5syju3vj8p5yhfels900hls",
     pool?: Pool;
-
+    network?: string;
 }
