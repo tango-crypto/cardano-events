@@ -1,10 +1,6 @@
 ## Cardano Events
 Listen to Ogmios and Write events to Kafka
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
 ## Installation
 
 ```bash
