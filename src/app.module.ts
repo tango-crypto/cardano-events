@@ -3,8 +3,9 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ClientOptions, ClientProviderOptions, ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ScyllaService } from './scylla/scylla.service';
 import { RecoveryService } from './scylla/recovery.service';
+import { StreamCacheService } from './redis/stream-cache.service';
+import { CacheExpiresProvider } from './redis/cache-expires.provider';
 
 @Module({
   imports: [
@@ -30,6 +31,6 @@ import { RecoveryService } from './scylla/recovery.service';
     ]),
   ],
   controllers: [AppController],
-  providers: [AppService, ScyllaService, RecoveryService],
+  providers: [AppService, StreamCacheService, RecoveryService, CacheExpiresProvider],
 })
 export class AppModule {}

@@ -93,7 +93,7 @@ async function bootstrap() {
   // }]
 
   const recoveryPoints = await recoveryService.findAll(notificationConfig.ogmios.network);
-  const points = recoveryPoints.length > 0 ? recoveryPoints.map(p => ({ slot: p.slot_no, id: p.hash })) : undefined;
+  const points = recoveryPoints.length > 0 ? recoveryPoints.map(p => ({ slot: p.slot_no, id: p.hash })).sort((a, b) => a.slot - b.slot) : undefined;
   console.log('Starting notifications from:', points || 'chain tip');
   await notifications.start(points);
 }

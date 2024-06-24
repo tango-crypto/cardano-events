@@ -107,6 +107,7 @@ export class OgmiosManager {
             const { block: _block, txs } = await this.buildBlock(block);
             await this.recoveryService.insert(this.network, _block);
             if (this.events.has('epoch') && _block.epoch_no > this.currentEpoch) {
+                console.log('New Epoch Notification!!!');
                 const epoch = this.buildEpoch(this.currentEpoch, _block);
                 this.currentEpoch = _block.epoch_no;
                 this.subscriptions.get('epoch').callback(null, epoch, OGMIOS_SOURCE);

@@ -3,49 +3,25 @@ import { ConfigService } from "@nestjs/config";
 import { mapping, types } from "cassandra-driver";
 import { ScyllaService } from "../scylla/scylla.service";
 import { BlockDto } from "src/models/block";
+import { StreamCacheService } from "src/redis/stream-cache.service";
 
 @Injectable()
 export class RecoveryService {
-    table: string;
+    prefix: string = 'recovery-points';
+    // ttl: number = 43200; // 12 hours
+    ttl: number = 60;
     recoveryPointMapper: mapping.ModelMapper<BlockDto>;
     getRecoveryPoints: (doc: any, executionOptions?: string | mapping.MappingExecutionOptions) => Promise<mapping.Result<BlockDto>>;
 
-    constructor(private readonly configService: ConfigService, private scyllaService: ScyllaService) { 
-        const mappingOptions: mapping.MappingOptions = {
-            models: {
-                'RecoveryPoint': {
-                    tables: ['recoverypoints'],
-                    mappings: new mapping.DefaultTableMappings,
-                    // columns: {
-                    //     network: 'network',
-                    //     blockNo: 'block_no',
-                    //     hash: 'hash',
-                    //     txBlocks: 'tx_blocks',
-                    //     slot: 'slot',
-                    //     blockSize: 'block_size',
-                    //     epochNo: 'epoch_no',
-                    //     slotNoInEpoch: 'slot_no_in_epoch',
-                    //     poolId: 'pool_id',
-                    //     time: 'time',
-                    //     protocolVersion: 'protocol_version',
-                    //     opCert: 'op_cert',
-                    //     vrfKey: 'vrf_key',
-                    //     timestamp: 'timestamp'
-                    // }
-                },
-            }
-        }
-
-        this.recoveryPointMapper = this.scyllaService.createMapper(mappingOptions).forModel('RecoveryPoint');
-        this.getRecoveryPoints = this.recoveryPointMapper.mapWithQuery(`SELECT * FROM recoverypoints WHERE network = ? ORDER BY slot_no DESC LIMIT ?`, (params) => [params.network, params.limit]);
+    constructor(private readonly configService: ConfigService, private streamCacheService: StreamCacheService) { 
     }
 
     async insert(network: string, block: BlockDto) {
-       await this.recoveryPointMapper.insert({ ...block, network, timestamp: new Date() });
+       await this.streamCacheService.insert(`${this.prefix}-${network}`, block, this.ttl);
     }
 
-    async findAll(network: string, limit = 5): Promise<BlockDto[]> {
-        const result = await this.getRecoveryPoints({ network, limit });
-        return result.toArray();
+    async findAll(network: string): Promise<BlockDto[]> {
+        const result = await this.streamCacheService.getAll(`${this.prefix}-${network}`);
+        return result;
     }
 }
