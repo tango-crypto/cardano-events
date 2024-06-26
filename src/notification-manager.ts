@@ -15,6 +15,21 @@ export class NotificationManager {
 		this.config = config;
 		this.subscriptions = new Map<string, { callback: (error: any, data: any) => void }>();
 
+		this.dbClient = new PostgresClient({
+			connection: {
+				host: this.config.db.host,
+				user: this.config.db.user,
+				port: this.config.db.port,
+				password: this.config.db.password,
+				database: this.config.db.name,
+			},
+			pool: {
+				min: parseInt(this.config.db.pool.min) || 0,
+				max: parseInt(this.config.db.pool.max) || 2
+			},
+			debug: this.config.db.debug || false
+		});
+
 		// Ogmios Manager initialization
 		this.ogmiosEvents = new Map()
 		if (this.config.ogmios) {

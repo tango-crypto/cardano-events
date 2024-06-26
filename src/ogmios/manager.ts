@@ -1,17 +1,18 @@
 import { ConnectionConfig } from '@cardano-ogmios/client'
 import { Intersection } from '@cardano-ogmios/client/dist/ChainSynchronization';
-import { Block, PointOrOrigin, TipOrOrigin, EraSummary, BlockEBB, BlockBFT, BlockPraos, Transaction } from '@cardano-ogmios/schema';
+import { Block, PointOrOrigin, TipOrOrigin, EraSummary, BlockEBB, BlockBFT, BlockPraos, Transaction, Certificate, StakeDelegation } from '@cardano-ogmios/schema';
 import { AssetsJSON, hash_plutus_data, MintJSON, PlutusData, Transaction as SerializationTransaction } from '@emurgo/cardano-serialization-lib-nodejs';
 import { PostgresClient } from '@tangocrypto/tango-ledger';
 import { BlockDto } from '../models/block';
-import { isBFTBlock, isEBBBlock, isPraosBlock } from '../models/ogmios/block';
+import { isBFTBlock, isEBBBlock, isPraosBlock, isStakeDelegation } from '../models/ogmios/block';
 import { Payment } from '../models/payment';
 import { AssetDto, TransactionDto, UtxoDto } from '../models/transaction';
-import { assetFingerprint, buildPlutusDataMap, convertAssetName, getAddress, getPoolHash, getStakeAddress, reverseMetadataObject, slotInEpoch, slotToEpoch, slotToTime, plutusDataToJson } from '../utils';
+import { assetFingerprint, buildPlutusDataMap, convertAssetName, getAddress, getPoolHash, getStakeAddress, reverseMetadataObject, slotInEpoch, slotToEpoch, slotToTime, plutusDataToJson, getStakeAddressFromKeyHash } from '../utils';
 import { OgmiosChainSyncClient } from './chain-sync';
 import { OgmiosStateQueryClient } from './state-query';
 import { BlockInfo } from 'src/models/block-info';
 import { RecoveryService } from 'src/scylla/recovery.service';
+import { DelegationDto } from 'src/models/delegation';
 
 
 const OGMIOS_SOURCE = 'tango.ogmios';
@@ -54,7 +55,7 @@ export class OgmiosManager {
         this.subscriptions = subscriptions;
         let slot = await this.getSlot(points);
         if (slot != 0) {
-            this.currentEpoch = slotToEpoch(slot);
+            this.currentEpoch = slotToEpoch(slot, this.network);
         }
         await this.chainSyncClient.createClient({ rollForward: this.onrollForward, rollBackward: this.onrollBackward });
 
@@ -87,7 +88,7 @@ export class OgmiosManager {
         const connected = await this.stateQueryClient.isConnected();
         if (!connected) {
             console.log('Query state not connected yet, so connect first');
-            
+
             await this.stateQueryClient.createClient(point);
         }
         if (point && connected) {
@@ -101,16 +102,41 @@ export class OgmiosManager {
         //   await db.insert(block)
         console.log('network:', this.network);
         console.log(`Chain extended, new tip: ${JSON.stringify(tip)}`);
-        // console.log(`Chain extended, block: ${JSON.stringify(block, (_, value) => typeof value == 'bigint' ? value.toString() : value )}`);
+        console.log(`Chain extended, block: ${JSON.stringify(block, (_, value) => typeof value == 'bigint' ? value.toString() : value)}`);
         let event = '';
         try {
             const { block: _block, txs } = await this.buildBlock(block);
             await this.recoveryService.insert(this.network, _block);
             if (this.events.has('epoch') && _block.epoch_no > this.currentEpoch) {
-                console.log('New Epoch Notification!!!');
-                const epoch = this.buildEpoch(this.currentEpoch, _block);
+                const epoch = this.buildEpoch(_block);
+                console.log('New Epoch Notification!!!', epoch);
                 this.currentEpoch = _block.epoch_no;
                 this.subscriptions.get('epoch').callback(null, epoch, OGMIOS_SOURCE);
+            }
+            if (this.events.has('delegation')) {
+                for (const { transaction } of txs) {
+                    if (!transaction.delegations) {
+                        continue;
+                    }
+                    for (const delegation of transaction.delegations) {
+                        try {
+                            const payload: DelegationDto = {
+                                ...delegation, 
+                                tx_hash: transaction.hash,
+                                epoch_no: _block.epoch_no,
+                                slot_no: _block.block_no,
+                                epoch_slot_no: _block.epoch_slot_no,
+                                block_hash: _block.hash,
+                                block_no: _block.block_no
+                            }
+                            console.log('Delegation:', payload);
+                            
+                            this.subscriptions.get('delegation').callback(null, payload, OGMIOS_SOURCE);
+                        } catch (err) {
+                            this.subscriptions.get('delegation').callback(err, null, OGMIOS_SOURCE);
+                        }
+                    }
+                }
             }
             if (this.events.has('block')) {
                 event = 'block';
@@ -132,16 +158,16 @@ export class OgmiosManager {
             }
         } catch (err) {
             console.log('Error', err);
-            
+
             this.subscriptions.get(event).callback(err, null, OGMIOS_SOURCE);
         }
 
         await sleep(1000);
         requestNext()
     }
-    buildEpoch(currentEpoch: number, _block: BlockDto) {
-        // TODO: return epoch
-        return _block;
+
+    buildEpoch(block: BlockDto) {
+        return { no: block.epoch_no, start_time: block.time };
     }
 
     private notifyTransactions(txs: { transaction: TransactionDto; inputs?: UtxoDto[] | { hash: string; index: number; }[]; outputs?: UtxoDto[]; }[], bBlock: BlockDto) {
@@ -158,62 +184,19 @@ export class OgmiosManager {
     async buildBlock(block: Block) {
         const result: { block?: BlockDto, txs?: { transaction: TransactionDto, inputs?: UtxoDto[] | { hash: string, index: number }[], outputs?: UtxoDto[] }[] } = {};
         let blockInfo = this.getCommonBlockInfo(block);
-        // if (isBabbageBlock(block)) {
-        //     const { babbage } = block;
-        //     blockInfo = this.getCommonBlockInfo(babbage);
-        // } else if (isAlonzoBlock(block)) {
-        //     const { alonzo } = block;
-        //     blockInfo = this.getCommonBlockInfo(alonzo);
-        // } else if (isMaryBlock(block)) {
-        //     const { mary } = block;
-        //     blockInfo = this.getCommonBlockInfo(mary);
-        // } else if (isAllegraBlock(block)) {
-        //     const { allegra } = block;
-        //     blockInfo = this.getCommonBlockInfo(allegra);
-        // } else if (isShelleyBlock(block)) {
-        //     const { shelley } = block;
-        //     blockInfo = this.getCommonBlockInfo(shelley);
-        // } else if (isByronStandardBlock(block)) { // Byron block
-        //     const { byron } = block;
-        //     const header = byron.header;
-        //     blockInfo = {
-        //         header,
-        //         txBlocks: byron.body.txPayload,
-        //         hash: byron.hash,
-        //         poolId: getPoolHash(header.signature.dlgCertificate.issuerVk),
-        //         time: slotToTime(header.slot, this.network),
-        //         epochNo: slotToEpoch(header.slot, this.network),
-        //         slotNoInEpoch: slotInEpoch(header.slot, this.network),
-        //     }
-        // } else if (isByronEpochBoundaryBlock(block)) {
-        //     const { byron } = block;
-        //     blockInfo = {
-        //         header: byron.header,
-        //         txBlocks: [],
-        //         hash: byron.hash,
-        //         epochNo: byron.header.epoch
-        //     }
-        //     console.log('EPOCH BOUNDARY ALERT!!!', JSON.stringify(block));
-        // } else { // invalid block???
-        //     console.log('invalid bock..................?????????????', JSON.stringify(block));
-        //     return;
-        // }
-
         // let { header, txBlocks, hash, poolId, time, epochNo, slotNoInEpoch } = blockInfo;
         let { blockNo, hash, txBlocks } = blockInfo;
-        // offchain fecth
         let fees = 0;
         let out_sum = 0;
         const txs: { transaction: TransactionDto, inputs?: UtxoDto[] | { hash: string, index: number }[], outputs?: UtxoDto[] }[] = [];
-        // console.log('Block txs:', txBlocks);
         for (const tx of txBlocks) {
-            const t = this.buildTransaction(tx)
+            const t = await this.buildTransaction(tx)
             fees += t.transaction.fee;
             out_sum += t.transaction.out_sum;
             txs.push(t);
         }
 
-        // onchain fecht
+        // onchain fetch
         // console.log('Pool Id:', poolId);
         // const pool = await this.dbClient.getPool(poolId);
         // console.log('Pool', pool);
@@ -225,7 +208,7 @@ export class OgmiosManager {
             epoch_slot_no: blockInfo.slotNoInEpoch,
             block_no: blockNo,
             previous_block: blockInfo.blockNo ? blockInfo.blockNo - 1 : null,
-            next_block: blockInfo.blockNo ? blockInfo.blockNo + 1: null,
+            next_block: blockInfo.blockNo ? blockInfo.blockNo + 1 : null,
             slot_leader: blockInfo.poolId,
             out_sum: out_sum,
             fees: fees,
@@ -257,7 +240,7 @@ export class OgmiosManager {
             return {
                 blockNo: _block.height,
                 epochNo: slotToEpoch(_block.slot, this.network),
-                slotNoInEpoch:  slotInEpoch(_block.slot, this.network),
+                slotNoInEpoch: slotInEpoch(_block.slot, this.network),
                 time: slotToTime(_block.slot, this.network),
                 poolId: getPoolHash(_block.issuer.verificationKey),
                 hash: _block.id,
@@ -270,7 +253,7 @@ export class OgmiosManager {
             return {
                 blockNo: _block.height,
                 epochNo: slotToEpoch(_block.slot, this.network),
-                slotNoInEpoch:  slotInEpoch(_block.slot, this.network),
+                slotNoInEpoch: slotInEpoch(_block.slot, this.network),
                 time: slotToTime(_block.slot, this.network),
                 poolId: getPoolHash(_block.issuer.verificationKey),
                 hash: _block.id,
@@ -294,12 +277,18 @@ export class OgmiosManager {
         // return { header, txBlocks, hash, poolId, time, epochNo, slotNoInEpoch };
     }
 
-    buildTransaction(tx: Transaction): { transaction: TransactionDto, inputs?: UtxoDto[] | { hash: string, index: number }[], outputs?: UtxoDto[] } {
+   async  buildTransaction(tx: Transaction): Promise<{ transaction: TransactionDto, inputs?: UtxoDto[] | { hash: string, index: number }[], outputs?: UtxoDto[] }> {
         let t: TransactionDto = {
             hash: tx.id,
             out_sum: 0,
             fee: 0,
             size: 0,
+        }
+        if (tx.certificates && tx.certificates.length > 0) {
+            const poolDelegations = await this.getPoolDelegations(tx.certificates);
+            if (poolDelegations.length > 0) {
+                t.delegations = poolDelegations;
+            }
         }
         const inputs = [], outputs = [];
         const transaction = SerializationTransaction.from_bytes(Buffer.from(tx.cbor, 'hex'));
@@ -407,6 +396,20 @@ export class OgmiosManager {
         }
         txOutputs?.free();
         return { transaction: t, inputs, outputs };
+    }
+
+    async getPoolDelegations(certificates: Certificate[]) {
+        console.log('Certificates:', JSON.stringify(certificates, null, 2));
+        const delegations: DelegationDto[] = [];
+        for (const cert of certificates) {
+            if (isStakeDelegation(cert)) {
+                const _cert = cert as StakeDelegation;
+                const poolId = _cert.stakePool.id;
+                const pool = await this.dbClient.getPool(poolId);
+                delegations.push({ stake_address: getStakeAddressFromKeyHash(cert.credential, this.network), pool })
+            }
+        }
+        return delegations;
     }
 
     buildMetadata(metadata: { [k: string]: string }): { label: string, json: any }[] {

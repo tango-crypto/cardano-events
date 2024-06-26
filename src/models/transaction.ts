@@ -1,4 +1,5 @@
 import { BlockDto } from "./block";
+import { DelegationDto } from "./delegation";
 
 export class TransactionDto {
     id?: number;
@@ -16,6 +17,7 @@ export class TransactionDto {
     mint?: any;
     metadata?: any;
     block?: BlockDto;
+    delegations?: DelegationDto[];
 }
 
 export class UtxoDto {

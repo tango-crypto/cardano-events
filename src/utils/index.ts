@@ -1,7 +1,7 @@
 import AssetFingerprint from '@emurgo/cip14-js';
 import * as blake2b from 'blake2b';
 import { bech32 } from 'bech32';
-import { Address, BaseAddress, ByronAddress, hash_plutus_data, PlutusData, PlutusList, RewardAddress } from '@emurgo/cardano-serialization-lib-nodejs';
+import { Address, BaseAddress, ByronAddress, Ed25519KeyHash, hash_plutus_data, NetworkInfo, PlutusData, PlutusList, RewardAddress, StakeCredential } from '@emurgo/cardano-serialization-lib-nodejs';
 import * as crypto from 'crypto';
 import { Block, Delegation, Epoch, Transaction } from '@tangocrypto/tango-ledger';
 import { Payment } from '../models/payment';
@@ -240,9 +240,26 @@ export function getStakeAddress(address: string): string | null {
   } catch (err) {
     return null;
   } finally {
-    for (const r of resources) {
-      r.free();
-    }
+    cleanup(resources);
+  }
+}
+
+export function getStakeAddressFromKeyHash(keyHash: string, network: string): string | null {
+  const resources = [];
+  const networkInfo = network == 'mainnet' ? NetworkInfo.mainnet() : NetworkInfo.testnet();
+  resources.push(networkInfo);
+  try {
+    const ed25519KeyHash = Ed25519KeyHash.from_hex(keyHash);
+    resources.push(ed25519KeyHash);
+    const stakeCredential = StakeCredential.from_keyhash(ed25519KeyHash);
+    resources.push(stakeCredential);
+    const rewardAddress = RewardAddress.new(networkInfo.network_id(), stakeCredential);
+    resources.push(rewardAddress);
+    return rewardAddress.to_address().to_bech32();
+  } catch (error) {
+    return null;
+  } finally {
+    cleanup(resources);
   }
 }
 
@@ -265,6 +282,22 @@ export function buildPlutusDataMap(plutusData: PlutusList): { [key: string]: { v
 export function getRandomUUID(replaceHyphen = true): string {
   const uuid = crypto.randomUUID();
   return replaceHyphen ? uuid.replace(/-/g, '') : uuid;
+}
+
+function cleanup(resources: any[]): void {
+  for (const r of resources) {
+    if (isDisposable(r)) {
+      r.free();
+    }
+  }
+}
+
+function isDisposable(obj: any): obj is Disposable {
+  return obj && typeof obj.free === 'function';
+}
+
+interface Disposable {
+  free(): void;
 }
 
 export const isEpochMessage = (m: Message): m is Epoch => (m as any).no != undefined

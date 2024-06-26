@@ -25,6 +25,19 @@ async function bootstrap() {
     }
   }
 
+  notificationConfig.db = {
+    host: configService.get<string>('DB_HOST'),
+    port: configService.get<number>('DB_PORT'),
+    user: configService.get<string>('DB_USER'),
+    password: configService.get<string>('DB_PWD'),
+    name: configService.get<string>('DB_NAME'),
+    debug: configService.get<string>('DB_DEBUG') == 'true',
+    pool: {
+      min: configService.get<number>('DB_POOL_MIN'),
+      max: configService.get<number>('DB_POOL_MAX'),
+    }
+  }
+
   let notifications = new NotificationManager(notificationConfig, recoveryService);
 
   notifications.subscribe('epoch', async (err, epoch: Epoch, source: string = 'tango.jsonrpc-server') => {
