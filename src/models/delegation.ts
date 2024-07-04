@@ -7,6 +7,7 @@ export class DelegationDto {
     tx_hash?: string;
     stake_address: string;
     pool: PoolDto;
+    network?: string;
 }
 
 export class PoolDto {

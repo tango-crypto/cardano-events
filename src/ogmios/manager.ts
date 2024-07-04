@@ -13,6 +13,7 @@ import { OgmiosStateQueryClient } from './state-query';
 import { BlockInfo } from 'src/models/block-info';
 import { RecoveryService } from 'src/scylla/recovery.service';
 import { DelegationDto } from 'src/models/delegation';
+import { EpochDto } from 'src/models/epoch';
 
 
 const OGMIOS_SOURCE = 'tango.ogmios';
@@ -107,13 +108,19 @@ export class OgmiosManager {
         try {
             const { block: _block, txs } = await this.buildBlock(block);
             await this.recoveryService.insert(this.network, _block);
+
+            // NOTIFY EPOCH
             if (this.events.has('epoch') && _block.epoch_no > this.currentEpoch) {
+                event = 'epoch';
                 const epoch = this.buildEpoch(_block);
                 console.log('New Epoch Notification!!!', epoch);
                 this.currentEpoch = _block.epoch_no;
                 this.subscriptions.get('epoch').callback(null, epoch, OGMIOS_SOURCE);
             }
+
+            // NOTIFY DELEGATION
             if (this.events.has('delegation')) {
+                event = 'delegation';
                 for (const { transaction } of txs) {
                     if (!transaction.delegations) {
                         continue;
@@ -127,7 +134,8 @@ export class OgmiosManager {
                                 slot_no: _block.block_no,
                                 epoch_slot_no: _block.epoch_slot_no,
                                 block_hash: _block.hash,
-                                block_no: _block.block_no
+                                block_no: _block.block_no,
+                                network: _block.network
                             }
                             console.log('Delegation:', payload);
                             
@@ -138,27 +146,20 @@ export class OgmiosManager {
                     }
                 }
             }
+
+            // NOTIFY BLOCK
             if (this.events.has('block')) {
                 event = 'block';
                 this.subscriptions.get('block').callback(null, _block, OGMIOS_SOURCE);
-                if (this.events.has('transaction')) {
-                    event = 'transaction';
-                    // console.log('---------------------- Mapping result ----------------------');
-                    // console.log(`New block:`, JSON.stringify(bBlock));
-                    // console.log('------------------------------------------------------------');
-                    // console.log(`New txs:`, JSON.stringify(txs));
-
-                    // console.log(`Querying the node...`);
-                    // console.log(JSON.stringify(await this.getEraSummaries()));
-                    this.notifyTransactions(txs, _block);
-                }
-            } else if (this.events.has('transaction')) {
+            } 
+            
+            // NOTIFY TRANSACTION
+            if (this.events.has('transaction')) {
                 event = 'transaction';
                 this.notifyTransactions(txs, _block);
             }
         } catch (err) {
             console.log('Error', err);
-
             this.subscriptions.get(event).callback(err, null, OGMIOS_SOURCE);
         }
 
@@ -166,8 +167,8 @@ export class OgmiosManager {
         requestNext()
     }
 
-    buildEpoch(block: BlockDto) {
-        return { no: block.epoch_no, start_time: block.time };
+    buildEpoch(block: BlockDto): EpochDto {
+        return { no: block.epoch_no, start_time: block.time, network: block.network };
     }
 
     private notifyTransactions(txs: { transaction: TransactionDto; inputs?: UtxoDto[] | { hash: string; index: number; }[]; outputs?: UtxoDto[]; }[], bBlock: BlockDto) {
