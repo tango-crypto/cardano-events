@@ -168,7 +168,7 @@ export class OgmiosManager {
     }
 
     buildEpoch(block: BlockDto): EpochDto {
-        return { no: block.epoch_no, start_time: block.time, network: block.network };
+        return { no: block.epoch_no, start_time: block.time, block };
     }
 
     private notifyTransactions(txs: { transaction: TransactionDto; inputs?: UtxoDto[] | { hash: string; index: number; }[]; outputs?: UtxoDto[]; }[], bBlock: BlockDto) {
