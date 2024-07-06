@@ -153,11 +153,24 @@ export class OgmiosManager {
                 this.subscriptions.get('block').callback(null, _block, OGMIOS_SOURCE);
             } 
             
-            // NOTIFY TRANSACTION
+            // NOTIFY TRANSACTION/PAYMENT
             if (this.events.has('transaction')) {
                 event = 'transaction';
-                this.notifyTransactions(txs, _block);
+                for (const { transaction } of txs) {
+                    let tx = { ...transaction, block: _block };
+                    this.subscriptions.get('transaction').callback(null, tx, OGMIOS_SOURCE);
+                }
             }
+
+            // NOTIFY PAYMENT
+            if (this.events.has('payment')) {
+                event = 'payment';
+                for (const { transaction, inputs, outputs } of txs) {
+                    const payment: Payment = { transaction: { ...transaction, block: _block }, inputs, outputs }
+                    this.subscriptions.get('payment').callback(null, payment, OGMIOS_SOURCE);
+                }
+            }
+
         } catch (err) {
             console.log('Error', err);
             this.subscriptions.get(event).callback(err, null, OGMIOS_SOURCE);
@@ -169,17 +182,6 @@ export class OgmiosManager {
 
     buildEpoch(block: BlockDto): EpochDto {
         return { no: block.epoch_no, start_time: block.time, block };
-    }
-
-    private notifyTransactions(txs: { transaction: TransactionDto; inputs?: UtxoDto[] | { hash: string; index: number; }[]; outputs?: UtxoDto[]; }[], bBlock: BlockDto) {
-        for (const { transaction, inputs, outputs } of txs) {
-            try {
-                const payment: Payment = { transaction: { ...transaction, block: bBlock }, inputs, outputs }
-                this.subscriptions.get('payment').callback(null, payment, OGMIOS_SOURCE);
-            } catch (err) {
-                this.subscriptions.get('payment').callback(err, null, OGMIOS_SOURCE);
-            }
-        }
     }
 
     async buildBlock(block: Block) {
