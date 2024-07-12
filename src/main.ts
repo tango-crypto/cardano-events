@@ -6,6 +6,7 @@ import { NotificationManager } from './notification-manager';
 import { Transaction, Delegation, Block, Epoch } from '@tangocrypto/tango-ledger';
 import { Payment } from './models/payment';
 import { RecoveryService } from './scylla/recovery.service';
+import { BlockDto } from './models/block';
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
@@ -15,7 +16,7 @@ async function bootstrap() {
 
   const notificationConfig: any = {};
   const useRecoveryPoints = configService.get<boolean>("USE_RECOVERY_POINTS") || false;
-  
+
   if (configService.get<string>('NOTIFY_OGMIOS') == 'true') {
     notificationConfig.ogmios = {
       host: configService.get<string>('OGMIOS_HOST') || 'localhost',
@@ -105,10 +106,15 @@ async function bootstrap() {
   //   slot: 62343319,
   //   id: '502830cd35735d119875be39a05a6dea788629e4644caec56b720a8cb0739fa7'
   // }]
+  async function getRecoveryPoints(useRecoveryPoints: boolean, network: string): Promise<BlockDto[]> {
+    return useRecoveryPoints ? await recoveryService.findAll(network) : Promise.resolve([])
+  }
 
-  const recoveryPoints = useRecoveryPoints ? await recoveryService.findAll(notificationConfig.ogmios.network) : [];
+  const recoveryPoints = await getRecoveryPoints(useRecoveryPoints, notificationConfig.ogmios.network);
   const points = recoveryPoints.length > 0 ? recoveryPoints.map(p => ({ slot: p.slot_no, id: p.hash })).sort((a, b) => a.slot - b.slot) : undefined;
   console.log('Starting notifications from:', points || 'chain tip');
   await notifications.start(points);
 }
+
+
 bootstrap();
