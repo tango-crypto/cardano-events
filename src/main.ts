@@ -15,7 +15,7 @@ async function bootstrap() {
   const recoveryService = app.get(RecoveryService);
 
   const notificationConfig: any = {};
-  const useRecoveryPoints = configService.get<boolean>("USE_RECOVERY_POINTS") || false;
+  const useRecoveryPoints = configService.get<string>("USE_RECOVERY_POINTS") == "true";
 
   if (configService.get<string>('NOTIFY_OGMIOS') == 'true') {
     notificationConfig.ogmios = {
@@ -107,7 +107,7 @@ async function bootstrap() {
   //   id: '502830cd35735d119875be39a05a6dea788629e4644caec56b720a8cb0739fa7'
   // }]
   async function getRecoveryPoints(useRecoveryPoints: boolean, network: string): Promise<BlockDto[]> {
-    return useRecoveryPoints ? await recoveryService.findAll(network) : Promise.resolve([])
+    return useRecoveryPoints ? await recoveryService.findAll(network) : []
   }
 
   const recoveryPoints = await getRecoveryPoints(useRecoveryPoints, notificationConfig.ogmios.network);
