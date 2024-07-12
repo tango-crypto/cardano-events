@@ -34,8 +34,9 @@ export class OgmiosManager {
     events: Map<string, boolean>;
 
     currentEpoch: number = 0;
+    useRecoveryPoints: boolean;
 
-    constructor(config: { host?: string, port?: number, tls?: boolean, node_env?: string, redis_host?: string, redis_port?: number, redis_pwd?: string, redis_cluster?: string, network?: string }, recoveryService: RecoveryService, dbClient: PostgresClient) {
+    constructor(config: { host?: string, port?: number, tls?: boolean, node_env?: string, redis_host?: string, redis_port?: number, redis_pwd?: string, redis_cluster?: string, network?: string }, recoveryService: RecoveryService, dbClient: PostgresClient, useRecoveryPoints: boolean) {
         this.connectionConfig = { host: config.host, port: config.port, tls: config.tls };
         console.log('Connection:', this.connectionConfig);
         console.log('Network:', config.network);
@@ -49,6 +50,7 @@ export class OgmiosManager {
 
         this.dbClient = dbClient;
         this.recoveryService = recoveryService;
+        this.useRecoveryPoints = useRecoveryPoints;
     }
 
     async startChainSync(events: Map<string, boolean>, subscriptions: Map<string, { callback: (error: any, data: any, source?: string) => void }>, points?: PointOrOrigin[], inFlight?: number): Promise<void> {
@@ -103,11 +105,13 @@ export class OgmiosManager {
         //   await db.insert(block)
         console.log('network:', this.network);
         console.log(`Chain extended, new tip: ${JSON.stringify(tip)}`);
-        console.log(`Chain extended, block: ${JSON.stringify(block, (_, value) => typeof value == 'bigint' ? value.toString() : value)}`);
+        // console.log(`Chain extended, block: ${JSON.stringify(block, (_, value) => typeof value == 'bigint' ? value.toString() : value)}`);
         let event = '';
         try {
             const { block: _block, txs } = await this.buildBlock(block);
-            await this.recoveryService.insert(this.network, _block);
+            if (this.useRecoveryPoints) {
+                await this.recoveryService.insert(this.network, _block);
+            }
 
             // NOTIFY EPOCH
             if (this.events.has('epoch') && _block.epoch_no > this.currentEpoch) {
@@ -402,7 +406,7 @@ export class OgmiosManager {
     }
 
     async getPoolDelegations(certificates: Certificate[]) {
-        console.log('Certificates:', JSON.stringify(certificates, null, 2));
+        // console.log('Certificates:', JSON.stringify(certificates, null, 2));
         const delegations: DelegationDto[] = [];
         for (const cert of certificates) {
             if (isStakeDelegation(cert)) {

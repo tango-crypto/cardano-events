@@ -11,7 +11,7 @@ export class NotificationManager {
 	subscriptions: Map<string, { callback: (error: any, data: any, source?: string) => void }>;
 	ogmiosEvents: Map<string, boolean>;
 
-	constructor(config: any, recoveryService: RecoveryService) {
+	constructor(config: any, recoveryService: RecoveryService, useRecoveryPoints: boolean) {
 		this.config = config;
 		this.subscriptions = new Map<string, { callback: (error: any, data: any) => void }>();
 
@@ -36,7 +36,7 @@ export class NotificationManager {
 			for(const event of this.config.ogmios.events.trim().split(',')) {
 				this.ogmiosEvents.set(event, true);
 			}
-			this.ogmiosManager = new OgmiosManager(this.config.ogmios, recoveryService, this.dbClient);
+			this.ogmiosManager = new OgmiosManager(this.config.ogmios, recoveryService, this.dbClient, useRecoveryPoints);
 		}
 	}
 

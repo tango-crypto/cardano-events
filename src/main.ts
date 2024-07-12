@@ -14,7 +14,8 @@ async function bootstrap() {
   const recoveryService = app.get(RecoveryService);
 
   const notificationConfig: any = {};
-
+  const useRecoveryPoints = configService.get<boolean>("USE_RECOVERY_POINTS") || false;
+  
   if (configService.get<string>('NOTIFY_OGMIOS') == 'true') {
     notificationConfig.ogmios = {
       host: configService.get<string>('OGMIOS_HOST') || 'localhost',
@@ -38,7 +39,7 @@ async function bootstrap() {
     }
   }
 
-  let notifications = new NotificationManager(notificationConfig, recoveryService);
+  let notifications = new NotificationManager(notificationConfig, recoveryService, useRecoveryPoints);
 
   notifications.subscribe('epoch', async (err, epoch: Epoch, source: string = 'tango.jsonrpc-server') => {
     if (err) {
@@ -105,7 +106,7 @@ async function bootstrap() {
   //   id: '502830cd35735d119875be39a05a6dea788629e4644caec56b720a8cb0739fa7'
   // }]
 
-  const recoveryPoints = await recoveryService.findAll(notificationConfig.ogmios.network);
+  const recoveryPoints = useRecoveryPoints ? await recoveryService.findAll(notificationConfig.ogmios.network) : [];
   const points = recoveryPoints.length > 0 ? recoveryPoints.map(p => ({ slot: p.slot_no, id: p.hash })).sort((a, b) => a.slot - b.slot) : undefined;
   console.log('Starting notifications from:', points || 'chain tip');
   await notifications.start(points);
